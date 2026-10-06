@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>쌓기나무 쌓기 게임</title>
+    <style>
+        /* 기본 접근성 및 레이아웃 설정 */
+        :root {
+            --primary: #4CAF50;
+            --primary-dark: #388E3C;
+            --bg-color: #F3F4F6;
+            --card-bg: #FFFFFF;
+            --text-main: #1F2937;
+            --error: #EF4444;
+            --blue: #3B82F6;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
+        
+        .container {
+            max-width: 900px; width: 100%; background: var(--card-bg); border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05); overflow: hidden; position: relative;
+        }
+
+        /* 화면 상태(보이기/숨기기) */
+        .screen { display: none; flex-direction: column; align-items: center; padding: 40px 20px; text-align: center; }
+        .screen.active { display: flex; }
+
+        /* 시작 & 결과 화면 */
+        h1 { font-size: 2.8rem; margin-bottom: 20px; color: var(--primary-dark); word-break: keep-all; }
+        p.subtitle { font-size: 1.3rem; margin-bottom: 40px; color: #4B5563; line-height: 1.5; }
+        
+        .btn-large {
+            background: var(--primary); color: white; border: none; padding: 15px 50px; font-size: 1.5rem;
+            border-radius: 50px; cursor: pointer; transition: transform 0.2s, background 0.2s; font-weight: bold;
+            box-shadow: 0 4px 6px rgba(76, 175, 80, 0.3);
+        }
+        .btn-large:hover, .btn-large:focus { background: var(--primary-dark); transform: scale(1.05); outline: 3px solid #86EFAC; outline-offset: 2px; }
+
+        /* 게임 화면 상단바 */
+        .header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 0 10px; }
+        .progress-container { flex-grow: 1; background: #E5E7EB; height: 16px; border-radius: 8px; margin: 0 20px; overflow: hidden; }
+        .progress-bar { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s ease; }
+        .question-num { font-size: 1.3rem; font-weight: bold; color: var(--primary-dark); min-width: 60px; }
+
+        /* 문제 영역 */
+        .instruction { font-size: 1.8rem; font-weight: bold; margin-bottom: 20px; padding: 15px 30px; background: #FEF3C7; border-radius: 12px; color: #B45309; transition: background 0.3s, color 0.3s; }
+        
+        /* 뷰포트 잘림 방지를 위해 충분한 높이 확보 */
+        .target-box { 
+            background: #F9FAFB; border-radius: 15px; padding: 20px; margin-bottom: 30px; 
+            display: flex; justify-content: center; align-items: center; border: 3px dashed #D1D5DB; 
+            width: 100%; max-width: 450px; height: 280px; 
+        }
+        
+        /* 보기 영역 */
+        .options-grid { display: flex; gap: 20px; justify-content: center; width: 100%; flex-wrap: wrap; }
+        .option-card {
+            background: white; border: 3px solid #E5E7EB; border-radius: 15px; padding: 15px; cursor: pointer;
+            transition: all 0.2s; width: 220px; height: 220px; display: flex; justify-content: center; align-items: center;
+        }
+        .option-card:hover, .option-card:focus { border-color: var(--primary); box-shadow: 0 0 15px rgba(76, 175, 80, 0.3); outline: none; transform: translateY(-5px); background: #F0FDF4; }
+        .option-card:disabled { cursor: not-allowed; transform: none; opacity: 0.8; }
+
+        /* SVG 설정 */
+        svg { width: 100%; height: 100%; pointer-events: none; }
+
+        /* 정답/오답 피드백 오버레이 */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95);
+            display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 20;
+        }
+        .overlay.active { display: flex; animation: fadeIn 0.2s ease-out; }
+        .overlay h2 { font-size: 5rem; margin: 0; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .overlay.correct h2 { color: var(--primary); }
+        .overlay.incorrect h2 { color: var(--error); }
+
+        /* 결과 화면 점수판 */
+        .score-board {
+            display: flex; gap: 40px; margin-bottom: 40px; justify-content: center; flex-wrap: wrap;
+        }
+        .score-card {
+            background: #F3F4F6; padding: 30px; border-radius: 20px; min-width: 200px;
+        }
+        .score-card h3 { font-size: 1.5rem; color: #4B5563; margin-bottom: 10px; }
+        .score-card.correct p { color: var(--primary); font-size: 3rem; font-weight: bold; }
+        .score-card.incorrect p { color: var(--error); font-size: 3rem; font-weight: bold; }
+
+        /* 애니메이션 */
+        @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+        @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+        /* 반응형 (태블릿/모바일) */
+        @media (max-width: 768px) {
+            .options-grid { flex-direction: column; align-items: center; }
+            .option-card { width: 100%; max-width: 300px; height: 250px; }
+            h1 { font-size: 2.2rem; }
+            .instruction { font-size: 1.4rem; padding: 10px 20px; }
+            .target-box { height: 240px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- 정답/오답 피드백 오버레이 -->
+    <div id="feedback-overlay" class="overlay">
+        <h2 id="feedback-message">⭕ 맞았어요!</h2>
+    </div>
+
+    <!-- 1. 시작 화면 -->
+    <div id="start-screen" class="screen active">
+        <h1>🌳 쌓기나무 쌓기</h1>
+        <p class="subtitle">모양을 잘 관찰하고 똑같은 쌓기나무를 찾아보세요.<br>총 15문제가 준비되어 있어요!</p>
+        <button class="btn-large" onclick="startGame()" aria-label="게임 시작하기">시작하기</button>
+    </div>
+
+    <!-- 2. 게임 화면 -->
+    <div id="game-screen" class="screen">
+        <div class="header">
+            <span id="question-text" class="question-num" aria-live="polite">1 / 15</span>
+            <div class="progress-container"><div id="progress-bar" class="progress-bar"></div></div>
+        </div>
+        <div id="instruction" class="instruction" aria-live="polite">똑같은 모양을 찾아보세요!</div>
+        
+        <div class="target-box" id="target-container" aria-label="문제 쌓기나무 모양">
+            <!-- 문제 SVG가 렌더링될 곳 -->
+        </div>
+
+        <div class="options-grid" id="options-container">
+            <!-- 보기 버튼들이 렌더링될 곳 -->
+        </div>
+    </div>
+
+    <!-- 3. 결과 화면 -->
+    <div id="result-screen" class="screen">
+        <h1>🎉 학습 완료!</h1>
+        <p class="subtitle">모든 문제를 끝까지 풀어냈어요. 정말 대단해요!</p>
+        
+        <div class="score-board">
+            <div class="score-card correct">
+                <h3>⭕ 맞힌 문제</h3>
+                <p id="score-correct">0</p>
+            </div>
+            <div class="score-card incorrect">
+                <h3>❌ 틀린 문제</h3>
+                <p id="score-incorrect">0</p>
+            </div>
+        </div>
+
+        <button class="btn-large" onclick="resetGame()" aria-label="처음부터 다시 하기">다시 하기</button>
+    </div>
+</div>
+
+<script>
+/**
+ * [데이터 설계] 쌓기나무 기본 모양 정의 (최대 6블록)
+ * 각 블록은 {x, y, z} 좌표를 가집니다. z가 높이입니다.
+ */
+const shapesData = [
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:2,y:0,z:0}], // 1: 1자형 (3개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:0,y:1,z:0}], // 2: L자형 (3개)
+    [{x:0,y:0,z:0}, {x:0,y:0,z:1}, {x:0,y:0,z:2}], // 3: 세로로 3개 (3개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:0,y:1,z:0}, {x:1,y:1,z:0}], // 4: 2x2 네모 (4개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:2,y:0,z:0}, {x:1,y:1,z:0}], // 5: T자형 (4개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:0,z:1}], // 6: L자형 + 구석 위 1개 (4개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:2,y:0,z:0}, {x:1,y:0,z:1}], // 7: 1자형 + 가운데 위 1개 (4개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:0,y:1,z:0}, {x:1,y:1,z:0}, {x:0,y:0,z:1}], // 8: 2x2 + 구석 위 1개 (5개)
+    [{x:1,y:0,z:0}, {x:0,y:1,z:0}, {x:1,y:1,z:0}, {x:2,y:1,z:0}, {x:1,y:2,z:0}], // 9: 십자가 모양 (5개)
+    [{x:0,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:2,z:0}, {x:1,y:0,z:0}, {x:1,y:2,z:0}], // 10: ㄷ자 모양 (5개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:2,y:0,z:0}, {x:0,y:0,z:1}, {x:1,y:0,z:1}, {x:0,y:0,z:2}], // 11: 계단형 (6개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:2,y:0,z:0}, {x:0,y:1,z:0}, {x:1,y:1,z:0}, {x:2,y:1,z:0}], // 12: 2x3 직사각형 (6개)
+    [{x:1,y:0,z:0}, {x:0,y:1,z:0}, {x:1,y:1,z:0}, {x:2,y:1,z:0}, {x:1,y:2,z:0}, {x:1,y:1,z:1}], // 13: 십자가 + 중앙 위 1개 (6개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:2,z:0}, {x:0,y:0,z:1}, {x:0,y:0,z:2}], // 14: L자형 + 모서리 기둥 (6개)
+    [{x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:0,y:1,z:0}, {x:1,y:1,z:0}, {x:1,y:0,z:1}, {x:0,y:1,z:1}]  // 15: 엇갈린 2층 구조 (6개)
+];
+
+// 상태 변수
+let totalQuestions = 15;
+let currentQuestionIndex = 0;
+let scoreCorrect = 0;
+let scoreIncorrect = 0;
+let gameQuestions = [];
+let isAnimating = false; // 중복 클릭 방지
+
+/**
+ * [핵심 기능] 아이소메트릭 SVG 렌더링 엔진 (잘림 방지 로직 적용)
+ */
+function renderBlocksToSVG(blocks, angle = 0) {
+    // 1. 회전 적용 (angle이 90이면 시계방향 90도 회전)
+    let transformed = blocks.map(b => {
+        if (angle === 90) return { x: -b.y, y: b.x, z: b.z };
+        return { x: b.x, y: b.y, z: b.z };
+    });
+
+    // 2. 깊이 정렬 (Painter's Algorithm: 뒤에 있는 것부터 먼저 그림)
+    transformed.sort((a, b) => {
+        if (a.x !== b.x) return a.x - b.x;
+        if (a.y !== b.y) return a.y - b.y;
+        return a.z - b.z;
+    });
+
+    const tileW = 40; // 블록 너비 절반 기준
+    const tileH = 20; // 블록 높이 절반 기준
+    const cubeHeight = 40; // 기둥 높이
+    
+    let svgContent = '';
+    
+    // 블록이 화면 밖으로 나가지 않도록 최대/최소 좌표 추적
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+    transformed.forEach(b => {
+        // 아이소메트릭 좌표 변환
+        let cx = (b.x - b.y) * (tileW / 2);
+        let cy = (b.x + b.y) * (tileH / 2) - (b.z * cubeHeight);
+        
+        // 블록의 가장자리 6개 점을 모두 고려하여 Min/Max 계산
+        minX = Math.min(minX, cx - tileW/2);
+        maxX = Math.max(maxX, cx + tileW/2);
+        minY = Math.min(minY, cy - tileH/2);
+        maxY = Math.max(maxY, cy + tileH/2 + cubeHeight);
+
+        // 나무 질감을 표현하는 3개 면 그리기 (SVG Polygon)
+        // 윗면 (밝은 나무색)
+        svgContent += `<polygon points="${cx},${cy-tileH/2} ${cx+tileW/2},${cy} ${cx},${cy+tileH/2} ${cx-tileW/2},${cy}" fill="#FDE68A" stroke="#B45309" stroke-width="1.5" stroke-linejoin="round"/>`;
+        // 왼쪽면 (중간 나무색)
+        svgContent += `<polygon points="${cx-tileW/2},${cy} ${cx},${cy+tileH/2} ${cx},${cy+tileH/2+cubeHeight} ${cx-tileW/2},${cy+cubeHeight}" fill="#F59E0B" stroke="#B45309" stroke-width="1.5" stroke-linejoin="round"/>`;
+        // 오른쪽면 (어두운 나무색)
+        svgContent += `<polygon points="${cx},${cy+tileH/2} ${cx+tileW/2},${cy} ${cx+tileW/2},${cy+cubeHeight} ${cx},${cy+tileH/2+cubeHeight}" fill="#D97706" stroke="#B45309" stroke-width="1.5" stroke-linejoin="round"/>`;
+    });
+
+    // 화면 가운데 정렬을 위한 뷰박스(viewBox) 설정 (여백 30px 추가하여 절대 안 잘리게 함)
+    const padding = 30;
+    const vbWidth = (maxX - minX) + padding * 2;
+    const vbHeight = (maxY - minY) + padding * 2;
+    const startX = minX - padding;
+    const startY = minY - padding;
+    
+    return `<svg viewBox="${startX} ${startY} ${vbWidth} ${vbHeight}">${svgContent}</svg>`;
+}
+
+/**
+ * 게임 데이터 초기화 및 시작
+ */
+function startGame() {
+    scoreCorrect = 0;
+    scoreIncorrect = 0;
+    currentQuestionIndex = 0;
+    isAnimating = false;
+    
+    // 문제 생성 (15문제를 순서대로. 1~10번은 그대로, 11~15번은 회전)
+    gameQuestions = shapesData.slice(0, totalQuestions).map((shape, index) => {
+        return {
+            target: shape,
+            isSideView: index >= 10 // 11번(인덱스 10)부터 측면 뷰
+        };
+    });
+    
+    document.getElementById('start-screen').classList.remove('active');
+    document.getElementById('result-screen').classList.remove('active');
+    document.getElementById('game-screen').classList.add('active');
+    
+    loadQuestion();
+}
+
+/**
+ * 현재 문제를 화면에 표시
+ */
+function loadQuestion() {
+    isAnimating = false; // 클릭 잠금 해제
+    const q = gameQuestions[currentQuestionIndex];
+    
+    // 1. UI 및 진행률 바 업데이트
+    document.getElementById('question-text').innerText = `${currentQuestionIndex + 1} / ${totalQuestions}`;
+    document.getElementById('progress-bar').style.width = `${((currentQuestionIndex) / totalQuestions) * 100}%`;
+    
+    const instEl = document.getElementById('instruction');
+    if (q.isSideView) {
+        instEl.innerText = "옆에서 본 모양은 무엇일까요? (회전)";
+        instEl.style.backgroundColor = "#DBEAFE"; // 파란 톤
+        instEl.style.color = "#1E3A8A";
+    } else {
+        instEl.innerText = "똑같은 모양을 찾아보세요!";
+        instEl.style.backgroundColor = "#FEF3C7"; // 노란 톤
+        instEl.style.color = "#B45309";
+    }
+
+    // 2. 목표 이미지 렌더링 (기준은 항상 0도)
+    document.getElementById('target-container').innerHTML = renderBlocksToSVG(q.target, 0);
+
+    // 3. 보기(Options) 생성 로직
+    // 정답의 경우, isSideView면 90도 회전된 상태로 렌더링하도록 각도 부여
+    const correctAngle = q.isSideView ? 90 : 0;
+    
+    // 오답 추출: 현재 모양과 다른 모양 중 랜덤으로 2개 선택
+    let wrongShapes = shapesData.filter(s => s !== q.target).sort(() => 0.5 - Math.random()).slice(0, 2);
+    
+    let options = [
+        { shape: q.target, angle: correctAngle, isCorrect: true },
+        { shape: wrongShapes[0], angle: correctAngle, isCorrect: false },
+        { shape: wrongShapes[1], angle: correctAngle, isCorrect: false }
+    ];
+    
+    // 보기 순서를 무작위로 섞음
+    options.sort(() => 0.5 - Math.random());
+
+    // 4. 보기 HTML 버튼 렌더링
+    const optionsContainer = document.getElementById('options-container');
+    optionsContainer.innerHTML = '';
+    
+    options.forEach((opt, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'option-card';
+        btn.innerHTML = renderBlocksToSVG(opt.shape, opt.angle);
+        btn.setAttribute('aria-label', `${idx + 1}번 보기`);
+        btn.onclick = () => handleAnswer(opt.isCorrect, btn);
+        optionsContainer.appendChild(btn);
+    });
+}
+
+/**
+ * 정답/오답 확인 및 점수 기록 (1회 클릭 시 작동)
+ */
+function handleAnswer(isCorrect, buttonEl) {
+    if (isAnimating) return; // 이미 클릭해서 피드백 중이면 무시
+    isAnimating = true;
+
+    // 보기 버튼들 모두 비활성화
+    const allButtons = document.querySelectorAll('.option-card');
+    allButtons.forEach(btn => btn.disabled = true);
+
+    // 점수 기록
+    if (isCorrect) scoreCorrect++;
+    else scoreIncorrect++;
+
+    // 피드백 오버레이 표시
+    const overlay = document.getElementById('feedback-overlay');
+    const messageEl = document.getElementById('feedback-message');
+    
+    overlay.className = 'overlay active'; // 기존 클래스 초기화
+    
+    if (isCorrect) {
+        overlay.classList.add('correct');
+        messageEl.innerText = "⭕ 맞았어요!";
+    } else {
+        overlay.classList.add('incorrect');
+        messageEl.innerText = "❌ 아쉽지만 틀렸어요";
+    }
+
+    // 1.5초 후 다음 문제 또는 결과 화면으로 이동
+    setTimeout(() => {
+        overlay.classList.remove('active');
+        currentQuestionIndex++;
+        
+        if (currentQuestionIndex >= totalQuestions) {
+            showResult();
+        } else {
+            loadQuestion();
+        }
+    }, 1500);
+}
+
+/**
+ * 게임 종료 후 결과 화면 표시
+ */
+function showResult() {
+    // 게임 화면 숨기고 결과 화면 표시
+    document.getElementById('game-screen').classList.remove('active');
+    document.getElementById('result-screen').classList.add('active');
+    
+    // 점수 업데이트
+    document.getElementById('score-correct').innerText = `${scoreCorrect}개`;
+    document.getElementById('score-incorrect').innerText = `${scoreIncorrect}개`;
+}
+
+/**
+ * 게임 초기화 (다시 하기)
+ */
+function resetGame() {
+    startGame();
+}
+</script>
+
+</body>
+</html>
